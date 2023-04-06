@@ -1,5 +1,6 @@
-﻿using System.Collections.Immutable;
+using System.Collections.Immutable;
 using System.Text;
+using System.Threading;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -25,7 +26,7 @@ public class ReactivePropertySourceGenerator : IIncrementalGenerator
         var classDeclarations = context.SyntaxProvider
             .CreateSyntaxProvider(
                 predicate: static (syntaxNode, _) => IsSyntaxTargetForGeneration(syntaxNode), // select class with attributes
-                transform: static (generatorSyntaxContext, _) => GetSemanticTargetForGeneration(generatorSyntaxContext)) // select the class with the [ReactiveProperty] attribute
+                transform: static (generatorSyntaxContext, ct) => GetSemanticTargetForGeneration(generatorSyntaxContext, ct)) // select the class with the [ReactiveProperty] attribute
             .Where(static m => m is not null)!; // filter out attributed class that we don't care about
 
         // Combine the selected classes with the `Compilation`
@@ -47,8 +48,11 @@ public class ReactivePropertySourceGenerator : IIncrementalGenerator
     /// </summary>
     /// <param name="context"></param>
     /// <returns></returns>
-    private static ClassDeclarationSyntax? GetSemanticTargetForGeneration(in GeneratorSyntaxContext context)
+    private static ClassDeclarationSyntax? GetSemanticTargetForGeneration(in GeneratorSyntaxContext context, CancellationToken cancellationToken)
     {
+        // Stop if we're asked to.
+        cancellationToken.ThrowIfCancellationRequested();
+        
         /// We know the node is a <see cref="ClassDeclarationSyntax"/> thanks to <see cref="IsSyntaxTargetForGeneration(SyntaxNode)"/>.
         var classDeclarationSyntax = (ClassDeclarationSyntax)context.Node;
 
@@ -65,7 +69,7 @@ public class ReactivePropertySourceGenerator : IIncrementalGenerator
             {
                 foreach (var attributeSyntax in attributeListSyntax.Attributes)
                 {
-                    if (context.SemanticModel.GetSymbolInfo(attributeSyntax).Symbol is not ISymbol attributeSymbol)
+                    if (context.SemanticModel.GetSymbolInfo(attributeSyntax, cancellationToken).Symbol is not ISymbol attributeSymbol)
                     {
                         // Weird, we couldn't get the symbol, ignore it.
                         continue;
